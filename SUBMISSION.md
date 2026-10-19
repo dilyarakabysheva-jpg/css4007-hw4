@@ -1,8 +1,8 @@
 # HW4 — submission
 
-**AI assistance:** <!-- what you used, and for what. "None" is an answer too. -->
+**AI assistance:** I used an AI assistant as a thought partner to clarify task requirements, verify assumptions, organize document edge cases. All code execution, OpenAI API calls, logs generation, metrics calculation, and analytical evaluation were performed independently.
 
-I used an AI assistant as a thought partner to clarify task requirements, verify assumptions, organize document edge cases. All code execution, OpenAI API calls, logs generation, metrics calculation, and analytical evaluation were performed independently.
+---
 
 ## Part A — Plan on paper (Easy)
 
@@ -26,6 +26,8 @@ I used an AI assistant as a thought partner to clarify task requirements, verify
 - **4 -> 5:** The verified numerical result is fed back to the LLM to synthesize the final answer.
 
 ASCII Pipeline Diagram:
+
+```text
 [Question Ingestion] --(District Query)--> [Document Retrieval (lookup)]
                                                   |
                                           (Raw Text Snippet)
@@ -35,6 +37,7 @@ ASCII Pipeline Diagram:
         |                                   (Math String)
         |                                         v
    (Final Output) <---------------------- [Mathematical Calculation (calculate)]
+```
 
 **What I am assuming:**
 
@@ -46,9 +49,6 @@ ASCII Pipeline Diagram:
 - **Arithmetic Execution:** The LLM is prohibited from performing mental arithmetic; all math operations must be executed via the `calculate` tool.
 - **Rounding Precision:** Intermediate values retain full floating-point precision, and final values are rounded to 2 decimal places where appropriate.
 
-### A2 — The two tools
-
-#### `lookup`
 ### A2 — The two tools
 
 #### `lookup`
@@ -68,6 +68,7 @@ ASCII Pipeline Diagram:
     "required": ["query"]
   }
 }
+```
 
 | Case | What the tool returns |
 |---|---|
@@ -81,6 +82,7 @@ It could crash if passed non-string data types or fail silently by returning emp
 
 #### `calculate`
 
+```json
 {
   "name": "calculate",
   "description": "Evaluates a string math expression safely and returns the numeric result.",
@@ -95,6 +97,7 @@ It could crash if passed non-string data types or fail silently by returning emp
     "required": ["expression"]
   }
 }
+```
 
 | Case | What the tool returns |
 |---|---|
@@ -103,6 +106,7 @@ It could crash if passed non-string data types or fail silently by returning emp
 | invalid syntax | "Calculation error: <error_details>" |
 
 **Worst thing it could do with strange or dangerous input:**
+
 If implemented using unsafe eval(), arbitrary malicious code execution could occur. Using python's ast module ensures safe execution and prevents code injection attacks.
 
 ### A3 — Q-09 by hand
@@ -120,30 +124,27 @@ If implemented using unsafe eval(), arbitrary malicious code execution could occ
     "corrected_area_km2": 921.4
   }
 }
+```
 
 **My arithmetic:**
-My arithmetic:
 
-1.Retrieve Population (NR-05): Brightwater 2025 census population = 44,675 residents.
-
-2.Retrieve Correct Area (NR-16 overrides NR-05): NR-05 lists area as 912.4 km², but NR-16 issues a correction notice setting the correct area to 921.4 km².
-
-3.Compute Population Density: Density = 44,675 / 921.4 = 48.4859995658... ≈ 48.49 residents / km²
+1. Retrieve Population (NR-05): Brightwater 2025 census population = 44,675 residents.
+2. Retrieve Correct Area (NR-16 overrides NR-05): NR-05 lists area as 912.4 km², but NR-16 issues a correction notice setting the correct area to 921.4 km².
+3. Compute Population Density: Density = 44,675 / 921.4 = 48.4859995658... ≈ 48.49 residents / km²
 
 (If uncorrected area from NR-05 were used: 44,675 / 912.4 = 48.9642... residents / km²)
 
 ### A4 — Why I split it this way
 
-<!-- one other way to split the task, and why you did not choose it -->
-
-### A4 — Why I split it this way
-
-One alternative approach was to feed all 17 raw documents directly into the prompt context at once (as done in Strategy S1) and let the LLM extract numbers and perform mental math in a single step. 
+One alternative approach was to feed all 17 raw documents directly into the prompt context at once (as done in Strategy S1) and let the LLM extract numbers and perform mental math in a single step.
 
 I decided against this monolithic split because:
+
 1. LLMs struggle with precise arithmetic and floating-point division when performing mental math.
 2. In large contexts, LLMs often miss correction notices (like NR-16) due to attention degradation ("lost in the middle" phenomenon).
 3. Tool delegation (`lookup` + `calculate`) makes the execution path transparent, auditable, and resilient to context bloat.
+
+---
 
 ## Part B — Build it and run it (Medium)
 
@@ -165,6 +166,8 @@ tests/test_tools.py ..                                                  [ 50%]
 tests/test_agent.py ..                                                  [100%]
 
 ============================== 4 passed in 1.12s ===============================
+```
+
 ### B3 — The loop
 
 - Round limit, and why: Set to 8 rounds. This provides enough reasoning budget for multi-step queries (requiring 2-3 lookups and 2 calculations) while preventing endless execution loops.
@@ -173,15 +176,14 @@ tests/test_agent.py ..                                                  [100%]
 
 ### B4 — Three strategies
 
-**What I kept the same:** 
+**What I kept the same:**
 
-Model: openai/gpt-4o-mini
-
-Temperature: 0.0 (for deterministic evaluation)
-
-Question set: Q-01 through Q-20
+- Model: openai/gpt-4o-mini
+- Temperature: 0.0 (for deterministic evaluation)
+- Question set: Q-01 through Q-20
 
 **My rule for a correct answer** (written before the first full run):
+
 An answer is marked correct if the final numeric value matches the true metric within 1% relative tolerance and properly incorporates all correction notices (e.g., NR-16) and unit conversions (e.g., NR-15).
 
 | Run | Strategy | Correct /20 | Unanswered | Input tokens | Output tokens | Median seconds per question | Total seconds | Cost ($) |
@@ -217,6 +219,7 @@ An answer is marked correct if the final numeric value matches the true metric w
 | Q-18 | ✅ | ✅ | ✅ |
 | Q-19 | ✅ | ✅ | ✅ |
 | Q-20 | ✅ | ✅ | ✅ |
+
 ---
 
 ## Part C — Explain and choose (Hard)
@@ -251,6 +254,7 @@ I would switch to **Strategy S1 (Direct Single Prompt)** only if sub-second late
 ### C4 — How sure I can be
 
 We can be confident in the reliability of Strategy S3 because:
+
 1. Every calculation is evaluated deterministically in Python via AST parsing rather than LLM text generation.
 2. The retrieval step is auditable: function calls record exactly which documents were fetched.
 3. Edge cases like unit conversions and correction overrides are handled systematically by prompt constraints and tool logic.
@@ -279,4 +283,4 @@ We can be confident in the reliability of Strategy S3 because:
    By tracking executed function argument signatures in a set and providing feedback when a duplicate call occurs.
 
 8. **Why is Self-Consistency (Strategy S2) more expensive than ReAct (Strategy S3)?**
-   S2 runs multiple full-context generations (k=5) per question, resulting in 5x prompt token overhead compared to S3's targeted tool queries.
+   S2 runs multiple full-context generations (k=5) per question, resulting in 5x prompt token overhead compared to S3's targeted tool queries.  
